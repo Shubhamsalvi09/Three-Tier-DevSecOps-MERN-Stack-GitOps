@@ -1,0 +1,157 @@
+serverFiles:
+  alerting_rules.yml:
+    groups:
+      - name: pod-alerts
+        rules:
+          - alert: PodCrashLooping
+            expr: rate(kube_pod_container_status_restarts_total[5m]) * 300 > 1
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Pod {{ $labels.pod }} is crash-looping"
+              description: "Pod {{ $labels.pod }} in {{ $labels.namespace }} restarted more than once in 5 minutes."
+
+          - alert: PodNotReady
+            expr: kube_pod_status_ready{condition="false"} == 1
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod {{ $labels.pod }} is not ready"
+              description: "Pod {{ $labels.pod }} in {{ $labels.namespace }} has been not ready for 5 minutes."
+
+          - alert: PodOOMKilled
+            expr: kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Pod {{ $labels.pod }} was OOMKilled"
+              description: "Pod {{ $labels.pod }} in {{ $labels.namespace }} was killed due to out of memory."
+
+      - name: node-alerts
+        rules:
+          - alert: NodeHighCPU
+            expr: (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (instance)) * 100 > 85
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High CPU on node {{ $labels.instance }}"
+              description: "Node {{ $labels.instance }} CPU usage is above 85% for 10 minutes."
+
+          - alert: NodeHighMemory
+            expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High memory on node {{ $labels.instance }}"
+              description: "Node {{ $labels.instance }} memory usage is above 85% for 5 minutes."
+
+          - alert: NodeDiskPressure
+            expr: (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) * 100 > 80
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Disk pressure on node {{ $labels.instance }}"
+              description: "Node {{ $labels.instance }} disk usage is above 80%."
+
+          - alert: NodeNotReady
+            expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Node {{ $labels.node }} is not ready"
+              description: "Node {{ $labels.node }} has been not ready for 5 minutes."
+
+      - name: deployment-alerts
+        rules:
+          - alert: DeploymentReplicasMismatch
+            expr: kube_deployment_spec_replicas != kube_deployment_status_available_replicas
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Deployment {{ $labels.deployment }} replicas mismatch"
+              description: "Deployment {{ $labels.deployment }} in {{ $labels.namespace }} has mismatched replicas for 10 minutes."
+
+          - alert: DeploymentRolloutStuck
+            expr: kube_deployment_status_condition{condition="Progressing",status="false"} == 1
+            for: 15m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Deployment {{ $labels.deployment }} rollout stuck"
+              description: "Deployment {{ $labels.deployment }} in {{ $labels.namespace }} rollout has been stuck for 15 minutes."
+
+      - name: resource-alerts
+        rules:
+          - alert: ContainerHighCPU
+            expr: |
+              (
+                sum(rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[5m]))
+                by (pod, namespace, container)
+                /
+                sum(kube_pod_container_resource_limits{resource="cpu",unit="core"})
+                by (pod, namespace, container)
+              ) * 100 > 90
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Container {{ $labels.container }} high CPU"
+              description: "Container {{ $labels.container }} in pod {{ $labels.pod }} CPU usage is above 90% for 10 minutes."
+
+          - alert: ContainerHighMemory
+            expr: |
+              (
+                sum(container_memory_working_set_bytes{container!="",container!="POD"})
+                by (pod, namespace, container)
+                /
+                sum(kube_pod_container_resource_limits{resource="memory",unit="byte"})
+                by (pod, namespace, container)
+              ) * 100 > 90
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Container {{ $labels.container }} high memory"
+              description: "Container {{ $labels.container }} in pod {{ $labels.pod }} memory usage is above 90% for 10 minutes."
+
+      - name: persistent-volume-alerts
+        rules:
+          - alert: PVCUsageHigh
+            expr: |
+              (kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes) * 100 > 80
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "PVC {{ $labels.persistentvolumeclaim }} usage high"
+              description: "PVC {{ $labels.persistentvolumeclaim }} in {{ $labels.namespace }} is above 80% capacity."
+
+alertmanager:
+  enabled: true
+
+  config:
+    global:
+      resolve_timeout: 5m
+
+    route:
+      group_by:
+        - namespace
+        - alertname
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: webhook-notifications
+
+    receivers:
+      - name: webhook-notifications
+        webhook_configs:
+          - url: 'https://webhook.site/f309c882-9c24-4c04-a265-64293a6b1dbc'
+            send_resolved: true
