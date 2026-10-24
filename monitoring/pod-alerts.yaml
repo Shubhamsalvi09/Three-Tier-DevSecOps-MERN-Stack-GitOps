@@ -1,0 +1,48 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pod-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  groups:
+    - name: kubernetes-pod-alerts
+      rules:
+
+        # 1. Pod stuck in CrashLoopBackOff
+        - alert: PodCrashLoopBackOff
+          expr: |
+            max by (namespace, pod) (
+              kube_pod_container_status_waiting_reason{
+                reason="CrashLoopBackOff"
+              }
+            ) == 1
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod stuck in CrashLoopBackOff"
+            description: 'Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in CrashLoopBackOff.'
+
+        # 2. Container restarted
+        - alert: PodContainerRestarted
+          expr: |
+            increase(kube_pod_container_status_restarts_total[5m]) > 0
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Container restarted"
+            description: 'A container in pod {{ $labels.namespace }}/{{ $labels.pod }} restarted within the last 5 minutes.'
+
+        # 3. Pod deletion detected
+        - alert: PodDeletionDetected
+          expr: |
+            kube_pod_deletion_timestamp > 0
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod deletion detected"
+            description: 'Pod {{ $labels.namespace }}/{{ $labels.pod }} is being deleted.'
