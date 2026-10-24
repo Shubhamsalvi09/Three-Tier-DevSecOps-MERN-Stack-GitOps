@@ -8,6 +8,10 @@ metadata:
 spec:
   route:
     receiver: telegram
+    matchers:
+      - name: namespace
+        matchType: =~
+        value: "^(argocd|monitoring)$"
     groupBy:
       - alertname
       - namespace
