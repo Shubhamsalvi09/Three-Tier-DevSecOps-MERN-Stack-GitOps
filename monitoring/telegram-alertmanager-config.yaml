@@ -11,7 +11,7 @@ spec:
     matchers:
       - name: namespace
         matchType: =~
-        value: "^(argocd|monitoring)$"
+        value: "^(argocd|monitoring|default)$"
     groupBy:
       - alertname
       - namespace
