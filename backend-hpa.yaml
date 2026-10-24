@@ -7,8 +7,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: backend
-  minReplicas: 30
-  maxReplicas: 40
+  minReplicas: 20
+  maxReplicas: 30
 
   behavior:
     scaleDown:
